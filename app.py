@@ -100,8 +100,6 @@ def translate_text(
 
     translation_output = translator(
         text,
-        src_lang=src_lang_code,
-        tgt_lang=tgt_lang_code,
         forced_bos_token_id=forced_bos_token_id,
         clean_up_tokenization_spaces=True,
         max_length=512,
