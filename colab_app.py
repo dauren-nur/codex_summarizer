@@ -28,4 +28,4 @@ def preload_models() -> None:
 if __name__ == "__main__":
     preload_models()
     demo = build_interface()
-    demo.queue(concurrency_count=2).launch(share=True)
+    demo.launch(share=True)
