@@ -96,11 +96,13 @@ def translate_text(
 ) -> str:
     """Translate text into English using the NLLB-200 model."""
     translator.tokenizer.src_lang = src_lang_code
-    forced_bos_token_id = translator.tokenizer.lang_code_to_id[TARGET_LANGUAGE_CODE]
+    # forced_bos_token_id = translator.tokenizer.lang_code_to_id[TARGET_LANGUAGE_CODE]
+    
 
     translation_output = translator(
         text,
-        forced_bos_token_id=forced_bos_token_id,
+        src_lang=TURKIC_LANGUAGE_CODES[src_lang_code], 
+        tgt_lang="eng_Latn",
         clean_up_tokenization_spaces=True,
         max_length=512,
     )
@@ -188,7 +190,7 @@ def build_interface() -> gr.Blocks:
 
 def main():
     demo = build_interface()
-    demo.queue(concurrency_count=2).launch()
+    demo.launch()
 
 
 if __name__ == "__main__":
