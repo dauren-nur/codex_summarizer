@@ -1,4 +1,4 @@
-"""Gradio app for speech transcription, translation, and summarization."""
+"""Gradio app for speech transcription, English translation, and summarization."""
 from functools import lru_cache
 from typing import Tuple
 
@@ -8,30 +8,26 @@ import torch
 from transformers import pipeline
 
 ASR_MODEL_NAME = "openai/whisper-small"
-TRANSLATION_MODEL_NAME = "facebook/m2m100_418M"
-SUMMARIZATION_MODEL_NAME = "facebook/bart-large-cnn"
+TRANSLATION_MODEL_NAME = "facebook/nllb-200-distilled-600M"
+SUMMARIZATION_MODEL_NAME = "csebuetnlp/mT5_m2m_crossSum"
 
-# The M2M100 tokenizer expects ISO language codes. All entries below are
-# validated against the list of supported languages in
-# https://huggingface.co/facebook/m2m100_418M
+# NLLB expects language codes that include the script (Latn, Cyrl, Arab, ...).
+# The codes below are chosen based on the model card for
+# https://huggingface.co/facebook/nllb-200-distilled-600M
 
 TURKIC_LANGUAGE_CODES = {
-    "Turkish": "tr",
-    "Azerbaijani": "az",
-    "Kazakh": "kk",
-    "Uzbek": "uz",
-    "Tatar": "tt",
-    "Kyrgyz": "ky",
-    "Turkmen": "tk",
-    "Uyghur": "ug",
+    "Turkish": "tur_Latn",
+    "Azerbaijani": "azj_Latn",
+    "Kazakh": "kaz_Cyrl",
+    "Uzbek": "uzn_Latn",
+    "Tatar": "tat_Cyrl",
+    "Kyrgyz": "kir_Cyrl",
+    "Turkmen": "tuk_Latn",
+    "Uyghur": "uig_Arab",
 }
 
-TARGET_LANG_CODES = {
-    "English": "en",
-    "Turkish": "tr",
-    "German": "de",
-    "French": "fr",
-}
+TARGET_LANGUAGE_LABEL = "English"
+TARGET_LANGUAGE_CODE = "eng_Latn"
 
 
 def get_device() -> int:
@@ -83,20 +79,24 @@ def load_summarization_pipeline():
         return pipeline(
             "summarization",
             model=SUMMARIZATION_MODEL_NAME,
+            tokenizer=SUMMARIZATION_MODEL_NAME,
             device=DEVICE,
         )
-    return pipeline("summarization", model=SUMMARIZATION_MODEL_NAME)
+    return pipeline(
+        "summarization",
+        model=SUMMARIZATION_MODEL_NAME,
+        tokenizer=SUMMARIZATION_MODEL_NAME,
+    )
 
 
 def translate_text(
     translator,
     text: str,
     src_lang_code: str,
-    tgt_lang_code: str,
 ) -> str:
-    """Translate text with M2M100 while respecting source and target language codes."""
+    """Translate text into English using the NLLB-200 model."""
     translator.tokenizer.src_lang = src_lang_code
-    forced_bos_token_id = translator.tokenizer.get_lang_id(tgt_lang_code)
+    forced_bos_token_id = translator.tokenizer.lang_code_to_id[TARGET_LANGUAGE_CODE]
 
     translation_output = translator(
         text,
@@ -110,7 +110,6 @@ def translate_text(
 def process_audio(
     audio_file: Tuple[int, np.ndarray],
     source_language_label: str,
-    target_language_label: str,
     summary_max_length: int,
 ) -> Tuple[str, str, str]:
     """Transcribe, translate, and summarize an input audio file."""
@@ -126,19 +125,8 @@ def process_audio(
 
     translator = load_translation_pipeline()
     src_lang = TURKIC_LANGUAGE_CODES[source_language_label]
-    tgt_lang = TARGET_LANG_CODES[target_language_label]
 
-    translated_text = translate_text(translator, transcription_text, src_lang, tgt_lang)
-
-    # Summaries are produced in English for maximum faithfulness because the
-    # BART CNN model is trained exclusively on English data. If the user asks
-    # for a different translation target we perform an additional English
-    # translation solely for summarization.
-    english_translation = (
-        translated_text
-        if tgt_lang == TARGET_LANG_CODES["English"]
-        else translate_text(translator, transcription_text, src_lang, TARGET_LANG_CODES["English"])
-    )
+    english_translation = translate_text(translator, transcription_text, src_lang)
 
     summarizer = load_summarization_pipeline()
     summary_output = summarizer(
@@ -149,7 +137,7 @@ def process_audio(
     )
     summary_text = summary_output[0]["summary_text"].strip()
 
-    return transcription_text, translated_text, summary_text
+    return transcription_text, english_translation, summary_text
 
 
 def build_interface() -> gr.Blocks:
@@ -159,7 +147,7 @@ def build_interface() -> gr.Blocks:
             # Turkic Audio Summarizer
 
             Upload an audio clip in a Turkic language. The app will transcribe the speech, translate
-            it to your chosen target language, and provide a concise summary of the translation.
+            it into English, and provide a concise summary of the translation.
             """
         )
 
@@ -172,11 +160,6 @@ def build_interface() -> gr.Blocks:
                 choices=list(TURKIC_LANGUAGE_CODES.keys()),
                 value="Turkish",
             )
-            target_language = gr.Dropdown(
-                label="Translation Target",
-                choices=list(TARGET_LANG_CODES.keys()),
-                value="English",
-            )
             summary_length = gr.Slider(
                 label="Summary Max Length",
                 minimum=30,
@@ -188,12 +171,15 @@ def build_interface() -> gr.Blocks:
         submit_button = gr.Button("Transcribe, Translate & Summarize")
 
         transcription_output = gr.Textbox(label="Transcription", lines=6)
-        translation_output = gr.Textbox(label="Translation", lines=6)
+        translation_output = gr.Textbox(
+            label=f"Translation ({TARGET_LANGUAGE_LABEL})",
+            lines=6,
+        )
         summary_output = gr.Textbox(label="Summary", lines=6)
 
         submit_button.click(
             fn=process_audio,
-            inputs=[audio_input, source_language, target_language, summary_length],
+            inputs=[audio_input, source_language, summary_length],
             outputs=[transcription_output, translation_output, summary_output],
         )
 
