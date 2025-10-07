@@ -7,8 +7,8 @@ Usage inside Colab:
 !python colab_app.py
 ```
 
-The script preloads the required Hugging Face pipelines and launches a
-public Gradio share suitable for notebooks.
+The script preloads the required Hugging Face pipelines (Whisper, NLLB, and MT5)
+and launches a public Gradio share suitable for notebooks.
 """
 from app import (
     build_interface,
